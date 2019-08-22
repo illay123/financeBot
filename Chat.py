@@ -27,11 +27,6 @@ def get_url(url):
     content = response.content.decode("utf8")
     return content
 
-def dont_exist(chat_id):
-    """ask the server if specific chat activated for the first time"""
-    url = DBA + "getUser/?phone=" + str(chat_id)
-    return get_url(url) == "[]"
-
 def get_json_from_url(url):
     """extract the json from http response"""
     content = get_url(url)
@@ -73,34 +68,76 @@ class State():
 #         return self.action(arg)
 
 #**********************************************states**********************************************#
-MENUSTATE = State(1, None, None)
+
+def STARTSTATE_POST(arg, text):
+    print("[INFO] - started a new session")
+    if text != "/start":
+        print("[ERORR] - in func hello some thing went wrong, txt is", text)
+        return ENDSTATE
+    return FIRSTQSTATE
+STARTSTATE = State(1, None, STARTSTATE_POST)
+def FIRSTQSTATE_PRE(arg):
+    return "usage:\n\
+            balance [customer name] = see the balance of specific customer\n\
+            payments [customer name] = see all the payments got from specific customer\n\
+            classes [customer name] = see all the classes with price for specific customer\n\
+            new class -s [student name] -d [day in yyyy-mm-dd format] -h [set which hour in day in hh-mm-ss format] -l [length in same format] = set new class, return class id\n\
+            update class [id] = update the existance of class\n\
+            new man = start sub menu for new customers and students\n\
+            open classes = see which classes that should have been passed is open\n\
+            day Schedule [day] = see full class Schedule for specific day\n\
+            "
+def FIRSTQSTATE_POST(arg, text):
+    if text[:7] == "balance":
+        arg["balance"] = text[8:]
+        return BALANCESTATE
+    else:
+        return ENDSTATE
+FIRSTQSTATE = State(2, FIRSTQSTATE_PRE, FIRSTQSTATE_POST)
+
+def BALANCESTATE_PRE(arg):
+    return arg["balance"]+"press anything to continue"
+def BALANCESTATE_POST(arg,txt):
+    return LOOPSTATE
+BALANCESTATE = State(3, BALANCESTATE_PRE, BALANCESTATE_POST)
+
+def LOOPSTATE_PRE(arg):
+    return "c = close connection \n\
+            r = return to main menu"
+def LOOPSTATE_POST(arg, txt):
+    if txt == "c":
+        return ENDSTATE
+    elif txt == "r":
+        return FIRSTQSTATE
+    else:
+        return LOOPSTATE
+LOOPSTATE = State(4,LOOPSTATE_PRE,LOOPSTATE_POST)
+
 def close(arg):
     """f"""
-    return "??end??"
-SHOUTDOWNSTATE = State(4, close, None)
-def enough(arg):
-    """f"""
-    debug_print("sending?")
-    return "it is enough"
-def empty(arg, text):
-    """f"""
-    return SHOUTDOWNSTATE
-FIRSTQSTATE = State(3, enough, empty)
-def hello(arg, text):
-    """f"""
-    if text != "/start":
-        print("[ERORR] - in func hello some thing went wrong")
-    return FIRSTQSTATE
-NEWUSERSTATE = State(2, None, hello)
+    print("[INFO] - ended session")
+    return None
+ENDSTATE = State(4,close, None)
+
+# def enough(arg):
+#     """f"""
+#     debug_print("sending?")
+#     return "it is enough"
+# def empty(arg, text):
+#     """f"""
+#     return SHOUTDOWNSTATE
+# def hello(arg, text):
+#     """f"""
+#     if text != "/start":
+#         print("[ERORR] - in func hello some thing went wrong")
+#     return FIRSTQSTATE
+# NEWUSERSTATE = State(2, None, hello)
 #**************************************************************************************************#
 class Session():
     """a session object created for every chat, hold the current state"""
     def __init__(self, chat_id):
         super(Session, self).__init__()
-        if dont_exist(chat_id):
-            self.current = NEWUSERSTATE
-        else:
-            self.current = MENUSTATE
+        self.current = STARTSTATE
         self.chat_id = chat_id
         self.arg = {}
 
@@ -117,8 +154,10 @@ class Session():
         debug_print(self.current.num)
         opt = self.current.pre_question(self.arg)
         debug_print("opt is: "+str(opt))
-        if opt is "??end??":
+        if opt is None:
             debug_print("shoutDown session "+str(self.chat_id))
+            self.send_message("Bye Bye")
+            return -1
         elif opt is not None:
             debug_print("place")
             self.send_message(opt)
@@ -158,10 +197,15 @@ class Bot():
         try:
             debug_print("try2")
             ses = self.dict[chat_id]
+            if ses is None:
+                ses = Session(chat_id)
+                self.dict[chat_id] = ses
         except KeyError:
             ses = Session(chat_id)
             self.dict[chat_id] = ses
-        ses.process(text)
+        v = ses.process(text)
+        if v==-1:
+            self.dict[chat_id] = None
 
     def start(self):
         """main loop of the program"""
@@ -218,3 +262,5 @@ if __name__ == '__main__':
     elif "test" in sys.argv:
         print("[INFO] - starting tests, the bot will shout down automaticlly after")
         unittest.main()
+    else:
+        print("[USAGE] Chat.py start/test [--debug]")

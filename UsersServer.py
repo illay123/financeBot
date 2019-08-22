@@ -141,12 +141,15 @@ class Db(object):
              WHERE customers.name = '"+name+"';"
             debug_print(command)
             self.cursor.execute(command)
-            return list(self.cursor)[0][0]
+            lis = list(self.cursor)
+            if lis == []:
+                print("[WARNING] - getIdFromCustomer for unknown name")
+                return -1
+            return lis[0][0]
         else:
             print('[SECURITY] - possible injection attack in getIdFromCustomer:')
             print('getIdFromCustomer?name=%s', name)
-            return "error"
-        return 1
+            return -1
 
     def getIdFromStudent(self, name):
         """conver name to id (one to one)"""
@@ -160,8 +163,7 @@ class Db(object):
         else:
             print('[SECURITY] - possible injection attack in getIdFromStudent:')
             print('getIdFromStudent?name=%s', name)
-            return "error"
-        return 1
+            return -1
 
     @cherrypy.expose
     def newCustomer(self, name, phone, price, address):
@@ -196,7 +198,7 @@ class Db(object):
         """
         if not malicius_input(sname) and not malicius_input(day) and not malicius_input(hour) and not malicius_input(length):
             sid = self.getIdFromStudent(sname)
-            self.cursor.execute("INSERT INTO students (sid, day, hour, length)\
+            self.cursor.execute("INSERT INTO classes (sid, day, hour, length)\
              VALUES ({},{},{},{})".format(sid, str(day), str(hour), str(length)))
             self.data_base.commit()
             return "True"
@@ -220,28 +222,92 @@ class Db(object):
         else:
             return "False"
 
-    @ cherrypy.expose
-    def getUserBalance():
-        pass
-    # @cherrypy.expose
-    # def updateUser(self, phone, arglist):
-    #     """one of the four exposed methods"""
-    #     command = "SELECT id FROM users WHERE phone= '"+re.sub("[^0-9]", "", phone)+"';"
-    #     self.cursor.execute(command)
-    #     debug_print(arglist)
-    #     idnum = self.cursor.fetchone()
-    #     # pdb.set_trace
-    #     dic = ast.literal_eval(arglist) #should be safety checked
-    #     # print (dic, idnum[0], type(idnum[0]))
-    #     for param in list(dic):
-    #         debug_print("inserting "+str(param)+str(idnum[0])+str(dic[param]))
-    #         command = "INSERT INTO pvalues (pid, id, val) VALUES \
-    #         (%s,%s,%s);"%(str(param), str(idnum[0]), str(dic[param]))
-    #         debug_print(command)
-    #         self.cursor.execute(command)
-    #     self.data_base.commit()
-    #     return "True"
+    @cherrypy.expose
+    def updateClass(self,i,val):
+        """update for class if it did exist"""
+        # print
+        command = "UPDATE classes SET happend = {}\
+                    WHERE id = {}".format(val,i)
+        self.cursor.execute(command)
+        self.data_base.commit()
+        return "True"
 
+    @cherrypy.expose
+    def getCustomerClasses(self, cname):
+        # cid = self.getIdFromCustomer(cname)
+        command = "SELECT classes.id,classes.day,classes.hour,classes.length,TIME_TO_SEC(classes.length)/3600*customers.price\
+                    FROM classes INNER JOIN students on classes.sid = students.sid \
+                    INNER JOIN customers on customers.cid = students.cid \
+                    WHERE customers.name = \"{}\"".format(cname)
+        self.cursor.execute(command)
+        lis = list(self.cursor)
+        if lis == []:
+            print("[WARNING] - getCustomerClasses for customer without transactions\
+                (might be unknown customer name, check warning above)")
+            return ""
+        else:
+            return str(lis)
+
+    @cherrypy.expose
+    def getCustomerTransactions(self, cname):
+        cid = self.getIdFromCustomer(cname)
+        command = "SELECT transactions.tid,transactions.day, transactions.amount\
+                    FROM transactions WHERE cid = {}".format(cid)
+        self.cursor.execute(command)
+        lis = list(self.cursor)
+        if lis == []:
+            print("[WARNING] - getCustomerTransactions for customer without transactions\
+                (might be unknown customer name, check warning above)")
+            return ""
+        else:
+            return str(lis)
+
+    @ cherrypy.expose
+    def getCustomerBalance(self, cname):
+        command = "SELECT balance FROM customers WHERE name = \"{}\"".format(cname)
+        print(command)
+        self.cursor.execute(command)
+        lis = list(self.cursor)
+        if lis == []:
+            print("[WARNING] - getCustomerBalance for unknown customer")
+            return None
+        else:
+            return str(lis[0][0])
+
+    def sumCustomerTransactions(self, cname):
+        # cid = self.getIdFromCustomer(cname)
+        command = "SELECT SUM(transactions.amount) \
+                    FROM transactions \
+                    INNER JOIN customers on transactions.cid = customers.cid \
+                    WHERE customers.name = \"{}\"".format(cname)
+        self.cursor.execute(command)
+        lis = list(self.cursor)
+        if lis == []:
+            print("[WARNING] - sumCustomerTransactions for customer without transactions\
+                (might be unknown customer name, check warning above)")
+            return ""
+        else:
+            return lis[0][0]
+    def sumCustomerClasses(self, cname):
+        command = "SELECT SUM(TIME_TO_SEC(classes.length)/3600*customers.price)\
+                    FROM classes INNER JOIN students ON classes.sid = students.sid \
+                    INNER JOIN customers ON customers.cid = students.cid \
+                    WHERE customers.name = \"{}\" AND classes.happend = TRUE".format(cname)
+        self.cursor.execute(command)
+        lis = list(self.cursor)
+        if lis == []:
+            print("[WARNING] - sumCustomerClasses for customer without transactions\
+                (might be unknown customer name, check warning above)")
+            return ""
+        else:
+            return lis[0][0]
+
+    def updateCustomerBalance(self,name):
+        new = self.sumCustomerClasses(name) - self.sumCustomerTransactions(name)
+        command = "UPDATE customers SET balance = {}\
+                    WHERE name = \"{}\"".format(new,name)
+        self.cursor.execute(command)
+        self.data_base.commit()
     # @cherrypy.expose
     # def getUser(self, phone):
     #     """one of the four exposed methods"""
@@ -306,6 +372,8 @@ if __name__ == '__main__':
     elif 'test' in sys.argv:
         print('[INFO] - starting the test')
         MDB = Db(dbName="finance", host="localhost")
-        MDB.newStudent("yali", "ori", "0587788008", "7")
+        # MDB.newStudent("yali", "ori", "0587788008", "7")
+        # print(MDB.sumCustomerClasses("ori"))
+        MDB.updateCustomerBalance("ori")
     else:
         print("[USAGE] users-server.py init/start/test [--debug]")
