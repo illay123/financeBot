@@ -7,6 +7,7 @@ import json
 import time
 import unittest
 import requests
+import ast
 #**************************************************************************************************#
 
 TOKEN = "660462542:AAFGXJ3D8iYC3Sai8Grouysz2TIdya-9fL8"
@@ -15,6 +16,64 @@ DBA = "http://127.0.0.1:8080/"
 
 #*********************************************util*********************************************#
 DEBUG = False
+
+class datetime(object):
+    """docstring for datetime"""
+    def __init__(self, arg):
+        super(datetime, self).__init__()
+        self.arg = arg
+    def date(a,b,c):
+        return str(c)+"\\"+str(b)+"\\"+str(a)
+    def timedelta(a,b):
+        return b/60
+
+def Decimal(a):
+    return float(a)
+
+def getClassesByName(name):
+    res = get_url(DBA+"""getCustomerClasses/?cname="""+name)
+    if res == "":
+        return None
+    else:
+        return res
+
+def cleanClasses(response):
+    debug_print("[cleanClasses] - got: "+ response)
+    if response == None:
+        return "no classes recorded yet"
+    payList = eval(response)
+    s = "num - date - length(min) - price(nis)\n"
+    for pay in payList:
+        # p = ast.literal_eval(pay)
+        s+=str(pay[0])+" - "+pay[1]+" - "+str(pay[3])+" - "+str(pay[4])+"\n"
+    return s
+
+
+        
+
+def getBalaceByName(name):
+    res = get_url(DBA+"""getCustomerBalance/?cname="""+name)
+    if res == "":
+        return None
+    else:
+        return res
+
+def getPaymentsByName(name):
+    res = get_url(DBA+"""getCustomerTransactions/?cname="""+name)
+    if res == "":
+        return None
+    else:
+        return res
+def cleanPayments(response):
+    debug_print("[cleanPayments] - got: "+ response)
+    if response == None:
+        return "no payments recorded yet"
+    payList = eval(response)
+    s = "num - date - value(nis)\n"
+    for pay in payList:
+        # p = ast.literal_eval(pay)
+        s+=str(pay[0])+" - "+pay[1]+" - "+str(pay[2])+"\n"
+    return s
 
 def debug_print(txt):
     """debug printing active only when --debug is used"""
@@ -78,25 +137,31 @@ def STARTSTATE_POST(arg, text):
 STARTSTATE = State(1, None, STARTSTATE_POST)
 def FIRSTQSTATE_PRE(arg):
     return "usage:\n\
-            balance [customer name] = see the balance of specific customer\n\
-            payments [customer name] = see all the payments got from specific customer\n\
-            classes [customer name] = see all the classes with price for specific customer\n\
-            new class -s [student name] -d [day in yyyy-mm-dd format] -h [set which hour in day in hh-mm-ss format] -l [length in same format] = set new class, return class id\n\
-            update class [id] = update the existance of class\n\
-            new man = start sub menu for new customers and students\n\
-            open classes = see which classes that should have been passed is open\n\
-            day Schedule [day] = see full class Schedule for specific day\n\
+        balance [customer name] = see the balance of specific customer\n\
+        payments [customer name] = see all the payments got from specific customer\n\
+        classes [customer name] = see all the classes with price for specific customer\n\
+        new class -s [student name] -d [day in yyyy-mm-dd format] -h [set which hour in day in hh-mm-ss format] -l [length in same format] = set new class, return class id\n\
+        update class [id] = update the existance of class\n\
+        new man = start sub menu for new customers and students\n\
+        open classes = see which classes that should have been passed is open\n\
+        day Schedule [day] = see full class Schedule for specific day\n\
             "
 def FIRSTQSTATE_POST(arg, text):
     if text[:7] == "balance":
         arg["balance"] = text[8:]
         return BALANCESTATE
+    elif text[:8] == "payments":
+        arg["payments"] = text[9:]
+        return PAYMENTSTATE
+    elif text[:7] == "classes":
+        arg["classes"] = text[8:]
+        return CLASSESSTATE
     else:
         return ENDSTATE
 FIRSTQSTATE = State(2, FIRSTQSTATE_PRE, FIRSTQSTATE_POST)
 
 def BALANCESTATE_PRE(arg):
-    return arg["balance"]+"press anything to continue"
+    return getBalaceByName(arg["balance"])+"\npress anything to continue"
 def BALANCESTATE_POST(arg,txt):
     return LOOPSTATE
 BALANCESTATE = State(3, BALANCESTATE_PRE, BALANCESTATE_POST)
@@ -111,7 +176,22 @@ def LOOPSTATE_POST(arg, txt):
         return FIRSTQSTATE
     else:
         return LOOPSTATE
-LOOPSTATE = State(4,LOOPSTATE_PRE,LOOPSTATE_POST)
+LOOPSTATE = State(4,LOOPSTATE_PRE, LOOPSTATE_POST)
+def PAYMENTSTATE_PRE(arg):
+    res = getPaymentsByName(arg["payments"])
+    return cleanPayments(res)+"\npress anything to continue"
+
+def PAYMENTSTATE_POST(arg, txt):
+    return LOOPSTATE
+PAYMENTSTATE = State(5, PAYMENTSTATE_PRE, PAYMENTSTATE_POST)
+
+def CLASSESSTATE_PRE(arg):
+    res = getClassesByName(arg["classes"])
+    return cleanClasses(res)+"\npress anything to continue"
+
+def CLASSESSTATE_POST(arg, txt):
+    return LOOPSTATE
+CLASSESSTATE = State(6, CLASSESSTATE_PRE, CLASSESSTATE_POST)
 
 def close(arg):
     """f"""

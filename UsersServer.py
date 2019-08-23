@@ -270,7 +270,7 @@ class Db(object):
         lis = list(self.cursor)
         if lis == []:
             print("[WARNING] - getCustomerBalance for unknown customer")
-            return None
+            return ""
         else:
             return str(lis[0][0])
 
