@@ -143,7 +143,7 @@ class Db(object):
             self.cursor.execute(command)
             lis = list(self.cursor)
             if lis == []:
-                print("[WARNING] - getIdFromCustomer for unknown name")
+                print("[WARNING] - getIdFromCustomer for unknown name: ",name)
                 return -1
             return lis[0][0]
         else:
@@ -159,7 +159,11 @@ class Db(object):
              WHERE students.name = '"+name+"';"
             debug_print(command)
             self.cursor.execute(command)
-            return list(self.cursor)[0][0]
+            lis = list(self.cursor)
+            if lis == []:
+                print("[WARNING] - getIdFromCustomer for unknown name: ",name)
+                return -1
+            return lis[0][0]
         else:
             print('[SECURITY] - possible injection attack in getIdFromStudent:')
             print('getIdFromStudent?name=%s', name)
@@ -183,7 +187,9 @@ class Db(object):
             if phone is None:
                 phone = "NULL"
             cid = self.getIdFromCustomer(cname)
-            self.cursor.execute("INSERT INTO classes (name, cid, phone, grade)\
+            # print("INSERT INTO classes (name, cid, phone, grade)\
+            # VALUES ({},{},{},{})".format(name, cid, phone, grade))
+            self.cursor.execute("INSERT INTO students (name, cid, phone, grade)\
              VALUES ({},{},{},{})".format(name, cid, phone, grade))
             self.data_base.commit()
             return "True"
@@ -194,10 +200,12 @@ class Db(object):
     def newClass(self, sname, day, hour, length):
         """
         day format: "yyyy-mm-dd"
-        hour\\length format: "hh:mm:ss"
+        hour/length format: "hh:mm:ss"
         """
         if not malicius_input(sname) and not malicius_input(day) and not malicius_input(hour) and not malicius_input(length):
-            sid = self.getIdFromStudent(sname)
+            sid = self.getIdFromStudent(sname[1:-1])
+            print("INSERT INTO classes (sid, day, hour, length)\
+             VALUES ({},{},{},{})".format(sid, str(day), str(hour), str(length)))
             self.cursor.execute("INSERT INTO classes (sid, day, hour, length)\
              VALUES ({},{},{},{})".format(sid, str(day), str(hour), str(length)))
             self.data_base.commit()
@@ -341,6 +349,11 @@ class Db(object):
 if __name__ == '__main__':
     # config = {'server.socket_host': '0.0.0.0'}
     # cherrypy.config.update(config)
+    serverMode = "finance"
+    if '--dev' in sys.argv:
+        print('[INFO] - soperating in dev mode\n\
+        same but with dev data so no debug in prod ;)')
+        serverMode = "finance_dev"
     if '--debug' in sys.argv:
         print("[INFO] - debug mode")
         DEBUG = True
@@ -348,10 +361,10 @@ if __name__ == '__main__':
         print('Argument List:', sys.argv)
     if 'init' in sys.argv:
         good = True
-        print('[INFO] - start initialyzing the finance server')
+        print('[INFO] - start initialyzing the {} server'.format(serverMode))
         MDB = Db(host="localhost")
-        good = MDB.create_db("finance") and good
-        MDB.cursor.execute("USE finance")
+        good = MDB.create_db(serverMode) and good
+        MDB.cursor.execute("USE {}".format(serverMode))
         good = MDB.create_tables() and good
         if '--test' in sys.argv:
             print('[TEST] - start testing initialization')
@@ -367,11 +380,11 @@ if __name__ == '__main__':
 
     elif 'start' in sys.argv:
         print('[INFO] - starting the server')
-        MDB = Db(dbName="finance", host="localhost")
+        MDB = Db(dbName=serverMode, host="localhost")
         cherrypy.quickstart(MDB)
     elif 'test' in sys.argv:
         print('[INFO] - starting the test')
-        MDB = Db(dbName="finance", host="localhost")
+        MDB = Db(dbName=serverMode, host="localhost")
         # MDB.newStudent("yali", "ori", "0587788008", "7")
         # print(MDB.sumCustomerClasses("ori"))
         MDB.updateCustomerBalance("ori")

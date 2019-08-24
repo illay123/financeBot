@@ -30,6 +30,17 @@ class datetime(object):
 def Decimal(a):
     return float(a)
 
+def createNewClass(arg):
+    """
+    new class -s [student name] -d [day in yyyy-mm-dd format] -h [set which hour in day in hh-mm-ss format] -l [length in same format] = set new class, return class id
+    """
+    print(arg)
+    print("""newClass/?sname=\""""+arg['s']+"\"&day=\""+arg['d']+"\"&hour=\""+arg['h']+"\"&length=\""+arg['l']+"\"")
+    res = get_url(DBA+"""newClass/?sname=\""""+arg['s']+"\"&day=\""+arg['d']+"\"&hour=\""+arg['h']+"\"&length=\""+arg['l']+"\"")
+    print(res)
+    return res=="True"
+
+
 def getClassesByName(name):
     res = get_url(DBA+"""getCustomerClasses/?cname="""+name)
     if res == "":
@@ -48,8 +59,35 @@ def cleanClasses(response):
         s+=str(pay[0])+" - "+pay[1]+" - "+str(pay[3])+" - "+str(pay[4])+"\n"
     return s
 
-
-        
+def stripParameters(txt):
+    d={}
+    name = False
+    val = ""
+    p = ''
+    i=0
+    while i<len(txt):
+        if not name and txt[i] == '-' and txt[i+1] == '-':
+            # print("here1: ", i)
+            name = True
+            i+=2
+            p=txt[i]
+            i+=1
+        elif name and txt[i] == '-' and txt[i+1] == '-':
+            # print("here2: ", i)
+            d[p] = val[:-1]
+            name = True
+            i+=2
+            p=txt[i]
+            i+=1
+            val = ""
+        elif name:
+            # print("here3: ", i, val)
+            val+=txt[i]
+        i+=1
+    # print("here4: ", i, p, val)
+    d[p] = val
+    print(d)
+    return d
 
 def getBalaceByName(name):
     res = get_url(DBA+"""getCustomerBalance/?cname="""+name)
@@ -109,23 +147,6 @@ class State():
         """second half of the state"""
         return self.post(arg, text)
 
-# class simpleState(state):
-#     """docstring for simpleState"""
-#     def __init__(self, arg):
-#         super(simpleState, self).__init__()
-#         self.arg = arg
-#     def getOptions(self):
-#         return list(self.dict)
-#     def nextState(self,choice):
-#         try:
-#             r = self.dict[choice]
-#         except KeyError as e:
-#             debugPrint("wrong choice " + str(choice) + " in state " + self.id)
-#             return None
-#         return r
-#     def act(self,arg):
-#         return self.action(arg)
-
 #**********************************************states**********************************************#
 
 def STARTSTATE_POST(arg, text):
@@ -140,7 +161,7 @@ def FIRSTQSTATE_PRE(arg):
         balance [customer name] = see the balance of specific customer\n\
         payments [customer name] = see all the payments got from specific customer\n\
         classes [customer name] = see all the classes with price for specific customer\n\
-        new class -s [student name] -d [day in yyyy-mm-dd format] -h [set which hour in day in hh-mm-ss format] -l [length in same format] = set new class, return class id\n\
+        new class --s [student name] --d [day in yyyy-mm-dd format] --h [set which hour in day in hh:mm:ss format] --l [length in same format] = set new class, return class id\n\
         update class [id] = update the existance of class\n\
         new man = start sub menu for new customers and students\n\
         open classes = see which classes that should have been passed is open\n\
@@ -156,6 +177,12 @@ def FIRSTQSTATE_POST(arg, text):
     elif text[:7] == "classes":
         arg["classes"] = text[8:]
         return CLASSESSTATE
+    elif text[:9] =="new class":
+        arg["new class"] = text[10:]
+        # arg = {**arg, **stripParameters(text[10:])}
+        return NCLASSSTATE
+    elif text[:4]=="exit":
+        exit()
     else:
         return ENDSTATE
 FIRSTQSTATE = State(2, FIRSTQSTATE_PRE, FIRSTQSTATE_POST)
@@ -192,6 +219,17 @@ def CLASSESSTATE_PRE(arg):
 def CLASSESSTATE_POST(arg, txt):
     return LOOPSTATE
 CLASSESSTATE = State(6, CLASSESSTATE_PRE, CLASSESSTATE_POST)
+
+def NCLASSSTATE_PRE(arg):
+    res = createNewClass(stripParameters(arg["new class"]))
+    if res:
+        return "done\npress any key to continue"
+    else:
+        return "somthing went wrong\npress any key to continue"
+def NCLASSSTATE_POST(arg, txt):
+    return LOOPSTATE
+
+NCLASSSTATE = State(4,NCLASSSTATE_PRE, NCLASSSTATE_POST)
 
 def close(arg):
     """f"""
@@ -341,6 +379,7 @@ if __name__ == '__main__':
         BOT.start()
     elif "test" in sys.argv:
         print("[INFO] - starting tests, the bot will shout down automaticlly after")
-        unittest.main()
+        # unittest.main()
+        print(stripParameters("--a 2019-08-18 --d bla --p chop --c boom trach"))
     else:
         print("[USAGE] Chat.py start/test [--debug]")
