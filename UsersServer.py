@@ -9,6 +9,9 @@ __author__ = 'E lie'
 import sys
 import re
 import ast
+import json
+import argparse
+import logging
 import cherrypy
 import mysql.connector
 
@@ -32,10 +35,11 @@ def malicius_input(txt):
 
 class Db(object):
     """object for database handling"""
-    def __init__(self, dbName=None, host="localhost"):
+    def __init__(self, config, dbName=None):
         super(Db, self).__init__()
-        self.host = host
+        self.host = config["host"]
         self.db_name = dbName
+        self.port = config["port"]
         self.cursor, self.data_base = self.create_connection()
 
     def create_connection(self):
@@ -46,7 +50,8 @@ class Db(object):
                 user="root",
                 auth_plugin='mysql_native_password',
                 passwd="ghkh12",
-                database=self.db_name
+                database=self.db_name,
+                port = self.port
                 )
             print("[INFO] usersServer - Connected successfully to %s" % self.db_name)
         else:
@@ -54,7 +59,8 @@ class Db(object):
                 host=self.host,
                 user="root",
                 auth_plugin='mysql_native_password',
-                passwd="ghkh12"
+                passwd="ghkh12",
+                port = self.port
                 )
 
         return mydb.cursor(buffered=True), mydb
@@ -204,8 +210,6 @@ class Db(object):
         """
         if not malicius_input(sname) and not malicius_input(day) and not malicius_input(hour) and not malicius_input(length):
             sid = self.getIdFromStudent(sname[1:-1])
-            print("INSERT INTO classes (sid, day, hour, length)\
-             VALUES ({},{},{},{})".format(sid, str(day), str(hour), str(length)))
             self.cursor.execute("INSERT INTO classes (sid, day, hour, length)\
              VALUES ({},{},{},{})".format(sid, str(day), str(hour), str(length)))
             self.data_base.commit()
@@ -246,7 +250,8 @@ class Db(object):
         command = "SELECT classes.id,classes.day,classes.hour,classes.length,TIME_TO_SEC(classes.length)/3600*customers.price\
                     FROM classes INNER JOIN students on classes.sid = students.sid \
                     INNER JOIN customers on customers.cid = students.cid \
-                    WHERE customers.name = \"{}\"".format(cname)
+                    WHERE customers.name = \"{}\"\
+                    ORDER BY classes.id desc".format(cname)
         self.cursor.execute(command)
         lis = list(self.cursor)
         if lis == []:
@@ -273,7 +278,8 @@ class Db(object):
     @ cherrypy.expose
     def getCustomerBalance(self, cname):
         command = "SELECT balance FROM customers WHERE name = \"{}\"".format(cname)
-        print(command)
+        # print(command)
+        self.updateCustomerBalance(cname)
         self.cursor.execute(command)
         lis = list(self.cursor)
         if lis == []:
@@ -311,7 +317,13 @@ class Db(object):
             return lis[0][0]
 
     def updateCustomerBalance(self,name):
-        new = self.sumCustomerClasses(name) - self.sumCustomerTransactions(name)
+        p = self.sumCustomerClasses(name)
+        m = self.sumCustomerTransactions(name)
+        if p is None:
+            p=0
+        if m is None:
+            m=0
+        new = p-m
         command = "UPDATE customers SET balance = {}\
                     WHERE name = \"{}\"".format(new,name)
         self.cursor.execute(command)
@@ -346,47 +358,76 @@ class Db(object):
 #     def index(self, num = 8):
 #         return "new user" + str(int(num)*2)
 
+def parseJson(fPath):
+    if fPath is None:
+        logging.info("no .config file found, starting with default")
+    else:
+        try:
+            with open(fPath, 'r') as content_file:
+                content = content_file.read()
+                return json.loads(content)
+        except FileNotFoundError as e:
+            logging.error('parseJson: can not open file {}'.format(fPath))
+        
+    return {"host":"localhost", "port":3306} #the default
+
+def setPaser():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-D","--dev", help="using or setting the development database",
+                    action="store_true")
+    parser.add_argument("-d","--debug", help="show debugging data when running",
+                    action="store_true")
+    parser.add_argument("-v","--verbose", help="increase output verbosity",
+                    action="store_true")
+    parser.add_argument("mode", help="operation mode of the server", 
+                    choices=["start", "test", "init"])
+    parser.add_argument("-c","--config",help="path to .config file, can be done by dragging")
+    args = parser.parse_args()
+    return args
+
 if __name__ == '__main__':
     # config = {'server.socket_host': '0.0.0.0'}
     # cherrypy.config.update(config)
     serverMode = "finance"
-    if '--dev' in sys.argv:
-        print('[INFO] - soperating in dev mode\n\
+    args = setPaser()
+    if args.debug:
+        logging.basicConfig(level=logging.DEBUG)
+        logging.debug(args)
+        logging.info("debug mode")
+        DEBUG = True
+        logging.debug('Number of arguments: {} arguments'.format(len(sys.argv)))
+        logging.debug('Argument List: {}'.format(sys.argv))
+
+    if args.dev:
+        logging.info('operating in dev mode\n\
         same but with dev data so no debug in prod ;)')
         serverMode = "finance_dev"
-    if '--debug' in sys.argv:
-        print("[INFO] - debug mode")
-        DEBUG = True
-        print('Number of arguments:', len(sys.argv), 'arguments.')
-        print('Argument List:', sys.argv)
-    if 'init' in sys.argv:
+    
+    config = parseJson(args.config)
+
+    if args.mode == 'init':
         good = True
-        print('[INFO] - start initialyzing the {} server'.format(serverMode))
-        MDB = Db(host="localhost")
+        logging.info('start initialyzing the {} server'.format(serverMode))
+        MDB = Db(config)
         good = MDB.create_db(serverMode) and good
         MDB.cursor.execute("USE {}".format(serverMode))
         good = MDB.create_tables() and good
-        if '--test' in sys.argv:
-            print('[TEST] - start testing initialization')
-            MDB.init_test()
-            print('[TEST] - done')
         if good:
-            print('[INFO] finished initialization successfully')
+            logging.info('finished initialization successfully')
         else:
-            print("[INFO] some errors detected during the initialization process,\
+            logging.info("some errors detected during the initialization process,\
              check the log for more information")
         MDB.close()
 
 
-    elif 'start' in sys.argv:
-        print('[INFO] - starting the server')
-        MDB = Db(dbName=serverMode, host="localhost")
+    elif args.mode == 'start':
+        logging.info('starting the server')
+        MDB = Db(config,dbName=serverMode)
         cherrypy.quickstart(MDB)
-    elif 'test' in sys.argv:
-        print('[INFO] - starting the test')
-        MDB = Db(dbName=serverMode, host="localhost")
+    elif args.mode == 'test':
+        logging.info('starting the test')
+        MDB = Db(config, dbName=serverMode)
         # MDB.newStudent("yali", "ori", "0587788008", "7")
         # print(MDB.sumCustomerClasses("ori"))
         MDB.updateCustomerBalance("ori")
-    else:
-        print("[USAGE] users-server.py init/start/test [--debug]")
+    

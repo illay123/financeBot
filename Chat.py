@@ -30,14 +30,19 @@ class datetime(object):
 def Decimal(a):
     return float(a)
 
+def updateClass(i):
+    res = get_url(DBA+"""updateClass/?i={}&val=True""".format(i))
+    # print(res)
+    return res == "True"
+
 def createNewClass(arg):
     """
     new class -s [student name] -d [day in yyyy-mm-dd format] -h [set which hour in day in hh-mm-ss format] -l [length in same format] = set new class, return class id
     """
-    print(arg)
-    print("""newClass/?sname=\""""+arg['s']+"\"&day=\""+arg['d']+"\"&hour=\""+arg['h']+"\"&length=\""+arg['l']+"\"")
+    # print(arg)
+    # print("""newClass/?sname=\""""+arg['s']+"\"&day=\""+arg['d']+"\"&hour=\""+arg['h']+"\"&length=\""+arg['l']+"\"")
     res = get_url(DBA+"""newClass/?sname=\""""+arg['s']+"\"&day=\""+arg['d']+"\"&hour=\""+arg['h']+"\"&length=\""+arg['l']+"\"")
-    print(res)
+    # print(res)
     return res=="True"
 
 
@@ -181,6 +186,9 @@ def FIRSTQSTATE_POST(arg, text):
         arg["new class"] = text[10:]
         # arg = {**arg, **stripParameters(text[10:])}
         return NCLASSSTATE
+    elif text[:12] == "update class":
+        arg["update class"] = text[13:]
+        return UCLASSSTATE
     elif text[:4]=="exit":
         exit()
     else:
@@ -230,6 +238,17 @@ def NCLASSSTATE_POST(arg, txt):
     return LOOPSTATE
 
 NCLASSSTATE = State(4,NCLASSSTATE_PRE, NCLASSSTATE_POST)
+
+def UCLASSSTATE_PRE(arg):
+    res = updateClass(arg["update class"])
+    if res:
+        return "done\npress any key to continue"
+    else:
+        return "somthing went wrong\npress any key to continue"
+def UCLASSSTATE_POST(arg, txt):
+    return LOOPSTATE
+
+UCLASSSTATE = State(4,UCLASSSTATE_PRE, UCLASSSTATE_POST)
 
 def close(arg):
     """f"""
