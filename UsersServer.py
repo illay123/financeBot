@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """this script creates a server that wrap the mysql database and provide
- four insert operations: creating new customer, create new student, register new class and add new transacion
- as well as get operations"""
+    four insert operations: creating new customer, create new student,
+    register new class and add new transacion.
+    as well as get operations"""
 
 __version__ = '0.2'
 __author__ = 'E lie'
-
+#*********************************************imports*********************************************#
 import sys
 import re
 import ast
@@ -14,53 +15,49 @@ import argparse
 import logging
 import cherrypy
 import mysql.connector
-
-DEBUG = False
-
-def debug_print(txt):
-    """debug printing active only when --debug is used"""
-    if DEBUG:
-        print('[DEBUG] - ', txt)
+#***********************************************util***********************************************#
 def malicius_input(txt):
+    """check if the input include chars that could be used to attack the system"""
     # print(type(txt))
     if txt is None:
         return False
-    """check if some potentially dangerous words are in the input"""
     bad_list = ['WHERE', 'DROP', 'SELECT', 'TABLE', 'NOT', 'INSERT', 'INTO', 'FROM']
     valids = re.sub(r"[^A-Za-z0-9]+", '', txt)
     for bad in bad_list:
         if bad in valids:
             return True
     return False
-
-class Db(object):
+#*********************************************database*********************************************#
+class Db():
     """object for database handling"""
     def __init__(self, config, dbName=None):
         super(Db, self).__init__()
         self.host = config["host"]
         self.db_name = dbName
         self.port = config["port"]
+        self.passwd = config["password"]
+        self.user = config["user"]
         self.cursor, self.data_base = self.create_connection()
 
     def create_connection(self):
         """creates connector object to the mySQL database"""
-        if self.db_name != None:
+        if self.db_name is not None:
             mydb = mysql.connector.connect(
                 host=self.host,
-                user="root",
+                user=self.user,
                 auth_plugin='mysql_native_password',
-                passwd="ghkh12",
+                passwd=self.passwd,
                 database=self.db_name,
-                port = self.port
+                port=self.port
                 )
-            print("[INFO] usersServer - Connected successfully to %s" % self.db_name)
+            logging.info("Connected successfully to {}".format(self.db_name))
         else:
             mydb = mysql.connector.connect(
                 host=self.host,
-                user="root",
+                user=self.user,
                 auth_plugin='mysql_native_password',
-                passwd="ghkh12",
-                port = self.port
+                passwd=self.passwd,
+                port=self.port
                 )
 
         return mydb.cursor(buffered=True), mydb
@@ -71,19 +68,19 @@ class Db(object):
         self.data_base.commit()
         self.cursor.close()
         self.data_base.close()
-        print('[INFO] - shuting down server conneion')
+        logging.info('shuting down server conneion')
 
     def create_db(self, name):
         """create new database, used only for initaliztion"""
         command = "CREATE DATABASE "+name
         self.cursor.execute("SHOW DATABASES")
         if (name,) in self.cursor:
-            print("[WARNING] usersServer - db %s already exist,\
-             if you want to replace it you should drop it first" % name)
+            logging.warning("usersServer - db {} already exist,\
+             if you want to replace it you should drop it first".format(name))
         try:
             self.cursor.execute(command)
         except Exception as e:
-            print("[ERROR] - internal error during db creation: ", e)
+            logging.error("internal error during db creation: {}".format(e))
             return False
         return True
 
@@ -123,9 +120,9 @@ class Db(object):
                   cid INT, day DATE,amount INT,\
                  FOREIGN KEY (cid) REFERENCES customers(cid))")
 
-            print('[INFO] - 4 tables have been created')
+            logging.info('4 tables have been created')
         except Exception as e:
-            print ("[ERROR] - internal error during tables creation: ", e)
+            logging.error("internal error during tables creation: {}".format(e))
             return False
         return True
 
@@ -149,12 +146,12 @@ class Db(object):
             self.cursor.execute(command)
             lis = list(self.cursor)
             if lis == []:
-                print("[WARNING] - getIdFromCustomer for unknown name: ",name)
+                logging.warning("getIdFromCustomer for unknown name: {}".format(name))
                 return -1
             return lis[0][0]
         else:
-            print('[SECURITY] - possible injection attack in getIdFromCustomer:')
-            print('getIdFromCustomer?name=%s', name)
+            logging.warning('[SECURITY] - possible injection attack in getIdFromCustomer:\n\
+                getIdFromCustomer?name={}'.format(name))
             return -1
 
     def getIdFromStudent(self, name):
@@ -167,18 +164,21 @@ class Db(object):
             self.cursor.execute(command)
             lis = list(self.cursor)
             if lis == []:
-                print("[WARNING] - getIdFromCustomer for unknown name: ",name)
+                logging.warning("getIdFromCustomer for unknown name: ".format(name))
                 return -1
             return lis[0][0]
         else:
-            print('[SECURITY] - possible injection attack in getIdFromStudent:')
-            print('getIdFromStudent?name=%s', name)
+            logging.warning('[SECURITY] - possible injection attack in getIdFromStudent:\n\
+            getIdFromStudent?name=%s', name)
             return -1
 
     @cherrypy.expose
     def newCustomer(self, name, phone, price, address):
         """one of the four exposed methods"""
-        if not malicius_input(name) and not malicius_input(price) and not malicius_input(phone) and not malicius_input(address):
+        if not malicius_input(name)\
+            and not malicius_input(price)\
+            and not malicius_input(phone)\
+            and not malicius_input(address):
             self.cursor.execute("INSERT INTO customers (price, balance, phone, name, address)\
              VALUES ({},{},{},{},{})".format(price, "0", phone, name, address))
             self.data_base.commit()
@@ -189,7 +189,10 @@ class Db(object):
     @cherrypy.expose
     def newStudent(self, name, cname, phone, grade):
         """one of the four exposed methods"""
-        if not malicius_input(name) and not malicius_input(cname) and not malicius_input(phone) and not malicius_input(grade):
+        if not malicius_input(name)\
+            and not malicius_input(cname)\
+            and not malicius_input(phone)\
+            and not malicius_input(grade):
             if phone is None:
                 phone = "NULL"
             cid = self.getIdFromCustomer(cname)
@@ -208,7 +211,10 @@ class Db(object):
         day format: "yyyy-mm-dd"
         hour/length format: "hh:mm:ss"
         """
-        if not malicius_input(sname) and not malicius_input(day) and not malicius_input(hour) and not malicius_input(length):
+        if not malicius_input(sname)\
+            and not malicius_input(day)\
+            and not malicius_input(hour)\
+            and not malicius_input(length):
             sid = self.getIdFromStudent(sname[1:-1])
             self.cursor.execute("INSERT INTO classes (sid, day, hour, length)\
              VALUES ({},{},{},{})".format(sid, str(day), str(hour), str(length)))
@@ -226,7 +232,7 @@ class Db(object):
         # print("************************",cname,da,amount)
         if not malicius_input(cname) and not malicius_input(da) and not malicius_input(amount):
             cid = self.getIdFromCustomer(cname)
-            print("%s",(da))
+            print("{}".format(da))
             self.cursor.execute("INSERT INTO transactions (cid, day, amount)\
              VALUES ({},{},{})".format(cid, str(da), amount))
             self.data_base.commit()
@@ -235,11 +241,11 @@ class Db(object):
             return "False"
 
     @cherrypy.expose
-    def updateClass(self,i,val):
+    def updateClass(self, i, val):
         """update for class if it did exist"""
         # print
         command = "UPDATE classes SET happend = {}\
-                    WHERE id = {}".format(val,i)
+                    WHERE id = {}".format(val, i)
         self.cursor.execute(command)
         self.data_base.commit()
         return "True"
@@ -247,7 +253,8 @@ class Db(object):
     @cherrypy.expose
     def getCustomerClasses(self, cname):
         # cid = self.getIdFromCustomer(cname)
-        command = "SELECT classes.id,classes.day,classes.hour,classes.length,TIME_TO_SEC(classes.length)/3600*customers.price\
+        command = "SELECT classes.id,classes.day,classes.hour,classes.length,\
+                    TIME_TO_SEC(classes.length)/3600*customers.price\
                     FROM classes INNER JOIN students on classes.sid = students.sid \
                     INNER JOIN customers on customers.cid = students.cid \
                     WHERE customers.name = \"{}\"\
@@ -316,36 +323,18 @@ class Db(object):
         else:
             return lis[0][0]
 
-    def updateCustomerBalance(self,name):
+    def updateCustomerBalance(self, name):
         p = self.sumCustomerClasses(name)
         m = self.sumCustomerTransactions(name)
         if p is None:
-            p=0
+            p = 0
         if m is None:
-            m=0
+            m = 0
         new = p-m
         command = "UPDATE customers SET balance = {}\
-                    WHERE name = \"{}\"".format(new,name)
+                    WHERE name = \"{}\"".format(new, name)
         self.cursor.execute(command)
         self.data_base.commit()
-    # @cherrypy.expose
-    # def getUser(self, phone):
-    #     """one of the four exposed methods"""
-    #     if not malicius_input(phone):
-    #         #  parameters.name | pvalues.val
-    #         command = "SELECT parameters.name,pvalues.val FROM users\
-    #          INNER JOIN pvalues on users.id = pvalues.id\
-    #          INNER JOIN parameters on pvalues.pid = parameters.pid\
-    #          WHERE users.phone= '"+re.sub("[^0-9]", "", phone)+"';"
-    #         debug_print(command)
-    #         self.cursor.execute(command)
-    #         lis = list(self.cursor)
-    #         # self.cursor.execute("SELECT val FROM")
-    #         return str(lis)
-    #     else:
-    #         print('[SECURITY] - possible injection attack in getUser:')
-    #         print('getUser?phone=%s', phone)
-    #         return "error"
 
     @cherrypy.expose
     def getScheme(self):
@@ -353,10 +342,31 @@ class Db(object):
         self.cursor.execute("SELECT * FROM classes")
         return str(list(self.cursor))
 
-# class HelloWorld(object):
-#     @cherrypy.expose
-#     def index(self, num = 8):
-#         return "new user" + str(int(num)*2)
+#***********************************************test***********************************************#
+class TestMethods(unittest.TestCase):
+    """test for the non class functions"""
+    def test_malicius_input(self):
+        """just a test..."""
+        self.assertTrue(malicius_input("DROP TABLE user;"))
+        self.assertFalse(malicius_input("illay"))
+
+    # def test_isupper(self):
+    #     self.assertTrue('FOO'.isupper())
+    #     self.assertFalse('Foo'.isupper())
+
+    # def test_split(self):
+    #     s = 'hello world'
+    #     self.assertEqual(s.split(), ['hello', 'world'])
+    #     # check that s.split fails when the separator is not a string
+    #     with self.assertRaises(TypeError):
+    #         s.split(2)
+class TestState(unittest.TestCase):
+    """test for the state class"""
+    def function(self):
+        """actually empty"""
+        pass
+#***********************************************main***********************************************#
+
 
 def parseJson(fPath):
     if fPath is None:
@@ -368,16 +378,22 @@ def parseJson(fPath):
                 return json.loads(content)
         except FileNotFoundError as e:
             logging.error('parseJson: can not open file {}'.format(fPath))
-        
-    return {"host":"localhost", "port":3306} #the default
+            try:
+                with open(""" C:\\Users\\Illay\\Desktop\\summer app\\configurations\\default.config """, 'r') as content_file:
+                    content = content_file.read()
+                    return json.loads(content)
+            except FileNotFoundError as e:
+                logging.error('parseJson: can find default.config'.format(fPath))
+
+    return {"host":"localhost", "port":3306} #the basic default
 
 def setPaser():
     parser = argparse.ArgumentParser()
-    parser.add_argument("-D","--dev", help="using or setting the development database",
+    parser.add_argument("-D", "--dev", help="using or setting the development database",
                     action="store_true")
-    parser.add_argument("-d","--debug", help="show debugging data when running",
+    parser.add_argument("-d", "--debug", help="show debugging data when running",
                     action="store_true")
-    parser.add_argument("-v","--verbose", help="increase output verbosity",
+    parser.add_argument("-v", "--verbose", help="increase output verbosity",
                     action="store_true")
     parser.add_argument("mode", help="operation mode of the server", 
                     choices=["start", "test", "init"])
@@ -388,7 +404,7 @@ def setPaser():
 if __name__ == '__main__':
     # config = {'server.socket_host': '0.0.0.0'}
     # cherrypy.config.update(config)
-    serverMode = "finance"
+    serverMode = config["dbName"]
     args = setPaser()
     if args.debug:
         logging.basicConfig(level=logging.DEBUG)
@@ -398,12 +414,12 @@ if __name__ == '__main__':
         logging.debug('Number of arguments: {} arguments'.format(len(sys.argv)))
         logging.debug('Argument List: {}'.format(sys.argv))
 
+    config = parseJson(args.config)
+
     if args.dev:
         logging.info('operating in dev mode\n\
         same but with dev data so no debug in prod ;)')
-        serverMode = "finance_dev"
-    
-    config = parseJson(args.config)
+        serverMode = config["devDbName"]
 
     if args.mode == 'init':
         good = True
@@ -422,7 +438,7 @@ if __name__ == '__main__':
 
     elif args.mode == 'start':
         logging.info('starting the server')
-        MDB = Db(config,dbName=serverMode)
+        MDB = Db(config, dbName=serverMode)
         cherrypy.quickstart(MDB)
     elif args.mode == 'test':
         logging.info('starting the test')
