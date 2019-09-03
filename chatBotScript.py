@@ -9,11 +9,8 @@ import unittest
 import requests
 import ast
 import logging
-import chatBotInfrastructure.state # local
+from chatBotInfrastructure import State # local
 #**************************************************************************************************#
-
-TOKEN = "660462542:AAFGXJ3D8iYC3Sai8Grouysz2TIdya-9fL8" #get rid of this
-URL = "https://api.telegram.org/bot{}/".format(TOKEN)
 DBA = "http://127.0.0.1:8080/" #why not config?
 
 #*********************************************util*********************************************#

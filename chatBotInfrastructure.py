@@ -2,12 +2,10 @@
 """script for the chat bot, handles every chat as a finite state machine"""
 
 #**********************************************imports*********************************************#
-import sys
 import json
 import time
 import unittest
 import requests
-import ast
 import logging
 #**************************************************************************************************#
 
@@ -79,40 +77,44 @@ class State():
 #**************************************************************************************************#
 class Session():
     """a session object created for every chat, hold the current state"""
-    def __init__(self, chat_id):
+    def __init__(self, chat_id, start):
         super(Session, self).__init__()
-        self.current = STARTSTATE
+        self.current = start
         self.chat_id = chat_id
         self.arg = {}
 
-    def send_message(self, text):
+    def send_message(self, text, key = None):
         """the only method for messege sending"""
-        debug_print("actually sending?")
-        url = URL + "sendMessage?text={}&chat_id={}".format(text, self.chat_id)
+        logging.debug("actually sending?")
+        if key is None:
+            url = URL + "sendMessage?text={}&chat_id={}".format(text, self.chat_id)
+        else:
+            url = URL + "sendMessage?text={}&chat_id={}&reply_markup={}".format(text, self.chat_id, key)
         get_url(url)
 
     def process(self, text):
         """send the messege text to the state for process
         move the state acordingly"""
         self.current = self.current.post_question(self.arg, text)
-        debug_print(self.current.num)
+        logging.debug(self.current.num)
         opt = self.current.pre_question(self.arg)
-        debug_print("opt is: "+str(opt))
+        logging.debug("opt is: "+str(opt))
         if opt is None:
-            debug_print("shoutDown session "+str(self.chat_id))
+            logging.debug("shoutDown session "+str(self.chat_id))
             self.send_message("Bye Bye")
             return -1
         elif opt is not None:
-            debug_print("place")
+            logging.debug("place")
             self.send_message(opt)
 
 class Bot():
     """take updates from the instegram server"""
-    def __init__(self, token, url):
+    def __init__(self, token, url, start):
         super(Bot, self).__init__()
         self.token = token
         self.url = url
         self.dict = {}
+        self.startState = start
 
     def get_updates(self, offset=None):
         """get updates from the server by http"""
@@ -132,20 +134,20 @@ class Bot():
     def process(self, update):
         """pass the message to the right session for more processing"""
         try:
-            debug_print("try1")
+            logging.debug("try1")
             text = update["message"]["text"]
         except KeyError:
-            print("[INFO] - got image, cant process")
+            logging.info("got image, cant process")
             text = "img"
         chat_id = update["message"]["chat"]["id"]
         try:
-            debug_print("try2")
+            logging.debug("try2")
             ses = self.dict[chat_id]
             if ses is None:
-                ses = Session(chat_id)
+                ses = Session(chat_id, self.startState)
                 self.dict[chat_id] = ses
         except KeyError:
-            ses = Session(chat_id)
+            ses = Session(chat_id, self.startState)
             self.dict[chat_id] = ses
         v = ses.process(text)
         if v == -1:
@@ -156,10 +158,10 @@ class Bot():
         last_update_id = None
         while True:
             # print(last_update_id)
-            debug_print("updates?")
+            logging.debug("updates?")
             updates = self.get_updates(last_update_id)
             if len(updates["result"]) > 0:
-                debug_print("sure!")
+                logging.debug("sure!")
                 last_update_id = self.get_last_update_id(updates) + 1
                 for update in updates["result"]:
                     self.process(update)
@@ -173,19 +175,3 @@ class TestMethods(unittest.TestCase):
         """just a test..."""
         self.assertTrue(dont_exist("1"))
         self.assertFalse(dont_exist("972502006108"))
-
-    # def test_isupper(self):
-    #     self.assertTrue('FOO'.isupper())
-    #     self.assertFalse('Foo'.isupper())
-
-    # def test_split(self):
-    #     s = 'hello world'
-    #     self.assertEqual(s.split(), ['hello', 'world'])
-    #     # check that s.split fails when the separator is not a string
-    #     with self.assertRaises(TypeError):
-    #         s.split(2)
-class TestState(unittest.TestCase):
-    """test for the state class"""
-    def function(self):
-        """actually empty"""
-        pass

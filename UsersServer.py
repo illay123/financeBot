@@ -9,14 +9,14 @@ __author__ = 'E lie'
 #*********************************************imports*********************************************#
 import sys
 import re
-import ast
 import json
 import argparse
 import logging
+import unittest
 import cherrypy
 import mysql.connector
 #***********************************************util***********************************************#
-def malicius_input(txt):
+def maliciusInput(txt):
     """check if the input include chars that could be used to attack the system"""
     # print(type(txt))
     if txt is None:
@@ -126,9 +126,6 @@ class Db():
             return False
         return True
 
-    def init_test(self):
-        """still empty - should check the init process"""
-        pass
     # very unsafe
     def injection(self, command):
         """dont ever use it"""
@@ -138,11 +135,11 @@ class Db():
 
     def getIdFromCustomer(self, name):
         """conver name to id (one to one)"""
-        if not malicius_input(name):
+        if not maliciusInput(name):
             #  parameters.name | pvalues.val
             command = "SELECT cid FROM customers\
              WHERE customers.name = '"+name+"';"
-            debug_print(command)
+            logging.debug(command)
             self.cursor.execute(command)
             lis = list(self.cursor)
             if lis == []:
@@ -156,29 +153,29 @@ class Db():
 
     def getIdFromStudent(self, name):
         """conver name to id (one to one)"""
-        if not malicius_input(name):
+        if not maliciusInput(name):
             #  parameters.name | pvalues.val
             command = "SELECT sid FROM students\
              WHERE students.name = '"+name+"';"
-            debug_print(command)
+            logging.debug(command)
             self.cursor.execute(command)
             lis = list(self.cursor)
             if lis == []:
-                logging.warning("getIdFromCustomer for unknown name: ".format(name))
+                logging.warning("getIdFromCustomer for unknown name: {}".format(name))
                 return -1
             return lis[0][0]
         else:
             logging.warning('[SECURITY] - possible injection attack in getIdFromStudent:\n\
-            getIdFromStudent?name=%s', name)
+            getIdFromStudent?name={}'.format(name))
             return -1
 
     @cherrypy.expose
     def newCustomer(self, name, phone, price, address):
         """one of the four exposed methods"""
-        if not malicius_input(name)\
-            and not malicius_input(price)\
-            and not malicius_input(phone)\
-            and not malicius_input(address):
+        if not maliciusInput(name)\
+            and not maliciusInput(price)\
+            and not maliciusInput(phone)\
+            and not maliciusInput(address):
             self.cursor.execute("INSERT INTO customers (price, balance, phone, name, address)\
              VALUES ({},{},{},{},{})".format(price, "0", phone, name, address))
             self.data_base.commit()
@@ -189,10 +186,10 @@ class Db():
     @cherrypy.expose
     def newStudent(self, name, cname, phone, grade):
         """one of the four exposed methods"""
-        if not malicius_input(name)\
-            and not malicius_input(cname)\
-            and not malicius_input(phone)\
-            and not malicius_input(grade):
+        if not maliciusInput(name)\
+            and not maliciusInput(cname)\
+            and not maliciusInput(phone)\
+            and not maliciusInput(grade):
             if phone is None:
                 phone = "NULL"
             cid = self.getIdFromCustomer(cname)
@@ -211,10 +208,10 @@ class Db():
         day format: "yyyy-mm-dd"
         hour/length format: "hh:mm:ss"
         """
-        if not malicius_input(sname)\
-            and not malicius_input(day)\
-            and not malicius_input(hour)\
-            and not malicius_input(length):
+        if not maliciusInput(sname)\
+            and not maliciusInput(day)\
+            and not maliciusInput(hour)\
+            and not maliciusInput(length):
             sid = self.getIdFromStudent(sname[1:-1])
             self.cursor.execute("INSERT INTO classes (sid, day, hour, length)\
              VALUES ({},{},{},{})".format(sid, str(day), str(hour), str(length)))
@@ -230,7 +227,7 @@ class Db():
         hour\\length format: "hh:mm:ss"
         """
         # print("************************",cname,da,amount)
-        if not malicius_input(cname) and not malicius_input(da) and not malicius_input(amount):
+        if not maliciusInput(cname) and not maliciusInput(da) and not maliciusInput(amount):
             cid = self.getIdFromCustomer(cname)
             print("{}".format(da))
             self.cursor.execute("INSERT INTO transactions (cid, day, amount)\
@@ -243,7 +240,6 @@ class Db():
     @cherrypy.expose
     def updateClass(self, i, val):
         """update for class if it did exist"""
-        # print
         command = "UPDATE classes SET happend = {}\
                     WHERE id = {}".format(val, i)
         self.cursor.execute(command)
@@ -252,7 +248,7 @@ class Db():
 
     @cherrypy.expose
     def getCustomerClasses(self, cname):
-        # cid = self.getIdFromCustomer(cname)
+        """list all the classes taken by students related to the customer"""
         command = "SELECT classes.id,classes.day,classes.hour,classes.length,\
                     TIME_TO_SEC(classes.length)/3600*customers.price\
                     FROM classes INNER JOIN students on classes.sid = students.sid \
@@ -270,6 +266,7 @@ class Db():
 
     @cherrypy.expose
     def getCustomerTransactions(self, cname):
+        """list all the payments by the customer"""
         cid = self.getIdFromCustomer(cname)
         command = "SELECT transactions.tid,transactions.day, transactions.amount\
                     FROM transactions WHERE cid = {}".format(cid)
@@ -284,6 +281,7 @@ class Db():
 
     @ cherrypy.expose
     def getCustomerBalance(self, cname):
+        """return the balance of cutomer after recalculate it (type of trigger)"""
         command = "SELECT balance FROM customers WHERE name = \"{}\"".format(cname)
         # print(command)
         self.updateCustomerBalance(cname)
@@ -296,7 +294,7 @@ class Db():
             return str(lis[0][0])
 
     def sumCustomerTransactions(self, cname):
-        # cid = self.getIdFromCustomer(cname)
+        """sum up all the payments paid by someone"""
         command = "SELECT SUM(transactions.amount) \
                     FROM transactions \
                     INNER JOIN customers on transactions.cid = customers.cid \
@@ -310,6 +308,7 @@ class Db():
         else:
             return lis[0][0]
     def sumCustomerClasses(self, cname):
+        """sum up the prices of customer classes (all students of that customer)"""
         command = "SELECT SUM(TIME_TO_SEC(classes.length)/3600*customers.price)\
                     FROM classes INNER JOIN students ON classes.sid = students.sid \
                     INNER JOIN customers ON customers.cid = students.cid \
@@ -324,6 +323,7 @@ class Db():
             return lis[0][0]
 
     def updateCustomerBalance(self, name):
+        """calculate the debt for customer"""
         p = self.sumCustomerClasses(name)
         m = self.sumCustomerTransactions(name)
         if p is None:
@@ -345,30 +345,16 @@ class Db():
 #***********************************************test***********************************************#
 class TestMethods(unittest.TestCase):
     """test for the non class functions"""
-    def test_malicius_input(self):
+    def test_maliciusInput(self):
         """just a test..."""
-        self.assertTrue(malicius_input("DROP TABLE user;"))
-        self.assertFalse(malicius_input("illay"))
+        self.assertTrue(maliciusInput("DROP TABLE user;"))
+        self.assertFalse(maliciusInput("illay"))
 
-    # def test_isupper(self):
-    #     self.assertTrue('FOO'.isupper())
-    #     self.assertFalse('Foo'.isupper())
-
-    # def test_split(self):
-    #     s = 'hello world'
-    #     self.assertEqual(s.split(), ['hello', 'world'])
-    #     # check that s.split fails when the separator is not a string
-    #     with self.assertRaises(TypeError):
-    #         s.split(2)
-class TestState(unittest.TestCase):
-    """test for the state class"""
-    def function(self):
-        """actually empty"""
-        pass
 #***********************************************main***********************************************#
 
 
 def parseJson(fPath):
+    """get defenitions out of json type config file"""
     if fPath is None:
         logging.info("no .config file found, starting with default")
     else:
@@ -376,18 +362,19 @@ def parseJson(fPath):
             with open(fPath, 'r') as content_file:
                 content = content_file.read()
                 return json.loads(content)
-        except FileNotFoundError as e:
+        except FileNotFoundError:
             logging.error('parseJson: can not open file {}'.format(fPath))
             try:
                 with open(""" C:\\Users\\Illay\\Desktop\\summer app\\configurations\\default.config """, 'r') as content_file:
                     content = content_file.read()
                     return json.loads(content)
-            except FileNotFoundError as e:
-                logging.error('parseJson: can find default.config'.format(fPath))
+            except FileNotFoundError:
+                logging.error('parseJson: can find default.config {}'.format(fPath))
 
     return {"host":"localhost", "port":3306} #the basic default
 
-def setPaser():
+def setParser():
+    """defining the parse behaviour from the command line"""
     parser = argparse.ArgumentParser()
     parser.add_argument("-D", "--dev", help="using or setting the development database",
                     action="store_true")
@@ -397,7 +384,7 @@ def setPaser():
                     action="store_true")
     parser.add_argument("mode", help="operation mode of the server", 
                     choices=["start", "test", "init"])
-    parser.add_argument("-c","--config",help="path to .config file, can be done by dragging")
+    parser.add_argument("-c", "--config", help="path to .config file, can be done by dragging")
     args = parser.parse_args()
     return args
 
@@ -405,7 +392,7 @@ if __name__ == '__main__':
     # config = {'server.socket_host': '0.0.0.0'}
     # cherrypy.config.update(config)
     serverMode = config["dbName"]
-    args = setPaser()
+    args = setParser()
     if args.debug:
         logging.basicConfig(level=logging.DEBUG)
         logging.debug(args)
